@@ -1,0 +1,35 @@
+name: Deploy Infra Monitor
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Executar Deploy via SSH na VM do Azure
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.HOST_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            if [ ! -d "$HOME/projeto-infra" ]; then
+              git clone https://github.com/${{ github.repository }}.git $HOME/projeto-infra
+            fi
+            cd $HOME/projeto-infra
+
+            git fetch --all
+            git reset --hard origin/main
+
+            docker build -t infra-monitor:latest .
+
+            docker stop monitor-container || true
+            docker rm monitor-container || true
+            docker run -d --name monitor-container --restart always -p 80:80 infra-monitor:latest
+
+            docker image prune -f
