@@ -3,17 +3,18 @@ import psutil
 import requests
 import socket
 import platform
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
 
 # ========================================================
+# CONFIGURAÇÃO DA EQUIPE (Altere no GitHub para testar o CI/CD!)
 EQUIPE = "Grupo 3"
-AMBIENTE = "Painel de Infraestrutura — Grupo 3 • Azure"
+AMBIENTE = "Produção • Azure (Chile Central)"
 INTEGRANTES = [
-    {"nome": "BRUNO ANTONIO DE SOUSA COSTA", "role": "Cloud & CI/CD Pipeline"},
-    {"nome": "CAIO CESAR LIMA DINIZ", "role": "Containers & Dockerization"},
-    {"nome": "GABRIEL MICHALSKI PAIVA", "role": "Telemetry & Monitoring"}
+    "BRUNO ANTONIO DE SOUSA COSTA",
+    "CAIO CESAR LIMA DINIZ",
+    "GABRIEL MICHALSKI PAIVA"
 ]
 # ========================================================
 
@@ -23,7 +24,7 @@ def obter_conselho_devops():
         resposta = requests.get("https://api.adviceslip.com/advice", timeout=1.5)
         return resposta.json()['slip']['advice']
     except Exception:
-        return "Automate everything: if you have to do it twice, write a script."
+        return "Automatize tudo: se precisar fazer algo duas vezes, escreva um script."
 
 @app.route('/favicon.ico')
 def favicon():
@@ -61,25 +62,26 @@ def home():
     hostname = socket.gethostname()
     arquitetura = platform.machine()
     kernel = platform.release()
-    sistema_op = platform.system()
+    sistema_op_azure = f"Ubuntu 24.04.5 LTS (Kernel {kernel})"
     python_ver = platform.python_version()
 
-    # Cálculo de Uptime do Host
     boot_ts = psutil.boot_time()
     uptime_sec = int(datetime.now().timestamp() - boot_ts)
     uptime_horas = uptime_sec // 3600
     uptime_min = (uptime_sec % 3600) // 60
-    horario_atual = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Renderização da lista da equipe
+    fuso_br = timezone(timedelta(hours=-3))
+    horario_atual = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S (BRT / UTC-3)")
+
+    # Renderização limpa da equipe
     linhas_equipe = "".join([
         f"""
         <div class="member-item">
-            <div class="member-name">{m['nome']}</div>
-            <div class="member-role">{m['role']}</div>
+            <span class="member-indicator"></span>
+            <span class="member-name">{nome}</span>
         </div>
         """
-        for m in INTEGRANTES
+        for nome in INTEGRANTES
     ])
 
     html = f"""
@@ -88,7 +90,7 @@ def home():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Infra Monitor — {EQUIPE}</title>
+        <title>Painel de Infraestrutura — {EQUIPE}</title>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
         <style>
             :root {{
@@ -101,7 +103,6 @@ def home():
                 --text-secondary: #a1a1aa;
                 --text-muted: #71717a;
                 --accent-green: #10b981;
-                --accent-blue: #3b82f6;
                 --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
                 --font-mono: 'JetBrains Mono', monospace;
             }}
@@ -119,11 +120,10 @@ def home():
                 line-height: 1.5;
                 -webkit-font-smoothing: antialiased;
                 min-height: 100vh;
-                 display: flex;
+                display: flex;
                 flex-direction: column;
             }}
 
-            /* Barra superior estilo Console Cloud */
             .topbar {{
                 border-bottom: 1px solid var(--border);
                 background-color: var(--bg-surface);
@@ -150,7 +150,7 @@ def home():
                 border: 1px solid var(--border);
                 padding: 2px 8px;
                 border-radius: 4px;
-                color: var(--text-secondary);
+                color: var(--text-primary);
             }}
 
             .divider {{
@@ -177,7 +177,6 @@ def home():
                 border-radius: 50%;
             }}
 
-            /* Container Principal */
             .main-container {{
                 max-width: 1120px;
                 width: 100%;
@@ -186,7 +185,6 @@ def home():
                 flex: 1;
             }}
 
-            /* Cabeçalho da Página */
             .page-header {{
                 display: flex;
                 justify-content: space-between;
@@ -231,7 +229,6 @@ def home():
                 opacity: 0.9;
             }}
 
-            /* Grid de KPIs de Telemetria */
             .metrics-grid {{
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -299,7 +296,6 @@ def home():
                 color: var(--text-muted);
             }}
 
-            /* Seção Inferior: Especificações + Equipe */
             .bottom-grid {{
                 display: grid;
                 grid-template-columns: 1.4fr 1fr;
@@ -358,7 +354,6 @@ def home():
                 text-align: right;
             }}
 
-            /* Lista da Equipe */
             .member-list {{
                 display: flex;
                 flex-direction: column;
@@ -369,26 +364,27 @@ def home():
                 background-color: var(--bg-elevated);
                 border: 1px solid var(--border);
                 border-radius: 6px;
-                padding: 12px 14px;
+                padding: 14px 16px;
                 display: flex;
-                flex-direction: column;
-                gap: 2px;
+                align-items: center;
+                gap: 12px;
+            }}
+
+            .member-indicator {{
+                width: 6px;
+                height: 6px;
+                background-color: var(--text-secondary);
+                border-radius: 50%;
+                flex-shrink: 0;
             }}
 
             .member-name {{
                 font-size: 0.8125rem;
-                font-weight: 600;
+                font-weight: 500;
                 color: var(--text-primary);
-                letter-spacing: 0.01em;
+                letter-spacing: 0.02em;
             }}
 
-            .member-role {{
-                font-family: var(--font-mono);
-                font-size: 0.72rem;
-                color: var(--text-muted);
-            }}
-
-            /* Terminal de API Externa */
             .api-box {{
                 background-color: var(--bg-surface);
                 border: 1px solid var(--border);
@@ -435,7 +431,7 @@ def home():
         </style>
     </head>
     <body>
-        <!-- Barra de Topo -->
+        <!-- Barra Superior -->
         <header class="topbar">
             <div class="brand">
                 <span>UFRPE</span>
@@ -454,8 +450,8 @@ def home():
         <main class="main-container">
             <div class="page-header">
                 <div class="page-title">
-                    <h1>System Telemetry & Node Status</h1>
-                    <p>Monitoramento de recursos do container e automação CI/CD via GitHub Actions</p>
+                    <h1>Telemetria do Servidor & Status do Container</h1>
+                    <p>Monitoramento de hardware em tempo real e deploy automatizado (CI/CD) via GitHub Actions</p>
                 </div>
                 <a href="/" class="btn-refresh">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -464,7 +460,7 @@ def home():
                         <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
                         <path d="M16 21h5v-5"/>
                     </svg>
-                    Atualizar Métricas
+                    Atualizar Telemetria
                 </a>
             </div>
 
@@ -473,7 +469,7 @@ def home():
                 <!-- Card Hostname -->
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">Container ID (Hostname)</span>
+                        <span class="card-title">Hostname (ID do Container)</span>
                         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
                     </div>
                     <div class="metric-primary" style="font-size: 1.45rem;">{hostname}</div>
@@ -481,15 +477,15 @@ def home():
                         <div class="meter-fill" style="width: 100%; background-color: var(--accent-green);"></div>
                     </div>
                     <div class="metric-footer">
-                        <span>Status: Running</span>
-                        <span>Uptime: {uptime_horas}h {uptime_min}m</span>
+                        <span>Status: Ativo</span>
+                        <span>Atividade: {uptime_horas}h {uptime_min}m</span>
                     </div>
                 </div>
 
                 <!-- Card CPU -->
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">CPU Utilization</span>
+                        <span class="card-title">Uso de CPU</span>
                         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
                     </div>
                     <div class="metric-primary">{cpu_percent}%</div>
@@ -497,15 +493,15 @@ def home():
                         <div class="meter-fill" style="width: {min(cpu_percent, 100)}%;"></div>
                     </div>
                     <div class="metric-footer">
-                        <span>Arch: {arquitetura}</span>
-                        <span>{cpu_cores_logicos} vCPUs ({cpu_cores_fisicos} Core)</span>
+                        <span>Arq: {arquitetura}</span>
+                        <span>{cpu_cores_logicos} vCPUs ({cpu_cores_fisicos} Núcleo)</span>
                     </div>
                 </div>
 
                 <!-- Card Memória RAM -->
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">Memory Usage (RAM)</span>
+                        <span class="card-title">Uso de Memória (RAM)</span>
                         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><path d="M8 11V9"/><path d="M16 11V9"/><path d="M12 11V9"/><path d="M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/></svg>
                     </div>
                     <div class="metric-primary">{memoria.percent}%</div>
@@ -513,7 +509,7 @@ def home():
                         <div class="meter-fill" style="width: {min(memoria.percent, 100)}%;"></div>
                     </div>
                     <div class="metric-footer">
-                        <span>Used: {ram_usada_gb} GB</span>
+                        <span>Usado: {ram_usada_gb} GB</span>
                         <span>Total: {ram_total_gb} GB</span>
                     </div>
                 </div>
@@ -521,7 +517,7 @@ def home():
                 <!-- Card Disco -->
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">Disk Allocation (/)</span>
+                        <span class="card-title">Armazenamento em Disco (/)</span>
                         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
                     </div>
                     <div class="metric-primary">{disco.percent}%</div>
@@ -529,46 +525,46 @@ def home():
                         <div class="meter-fill" style="width: {min(disco.percent, 100)}%;"></div>
                     </div>
                     <div class="metric-footer">
-                        <span>Used: {disco_usado_gb} GB</span>
-                        <span>Free: {disco_livre_gb} GB</span>
+                        <span>Usado: {disco_usado_gb} GB</span>
+                        <span>Livre: {disco_livre_gb} GB</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Grid Inferior: Detalhes do Ambiente + Equipe -->
+            <!-- Grid Inferior: Especificações do Servidor + Integrantes -->
             <div class="bottom-grid">
                 <div class="card">
                     <div class="section-label">
-                        Ambiente & Especificações do Host
+                        Especificações do Servidor (Azure VM)
                         <span>psutil / platform</span>
                     </div>
                     <table class="spec-table">
                         <tr>
                             <td class="spec-key">Sistema Operacional</td>
-                            <td class="spec-val">{sistema_op} (Kernel {kernel})</td>
+                            <td class="spec-val">{sistema_op_azure}</td>
                         </tr>
                         <tr>
                             <td class="spec-key">Arquitetura do Processador</td>
-                            <td class="spec-val">{arquitetura} ({cpu_cores_logicos} Logical CPUs)</td>
+                            <td class="spec-val">{arquitetura} ({cpu_cores_logicos} vCPUs)</td>
                         </tr>
                         <tr>
-                            <td class="spec-key">System Load Average (1m / 5m / 15m)</td>
+                            <td class="spec-key">Carga Média do Sistema (1m / 5m / 15m)</td>
                             <td class="spec-val">{load_1} / {load_5} / {load_15}</td>
                         </tr>
                         <tr>
-                            <td class="spec-key">Memória Disponível para Alocação</td>
+                            <td class="spec-key">Memória Disponível</td>
                             <td class="spec-val">{ram_disp_gb} GB de {ram_total_gb} GB</td>
                         </tr>
                         <tr>
-                            <td class="spec-key">Runtime do Container</td>
-                            <td class="spec-val">Python {python_ver} • Flask (Port 80)</td>
+                            <td class="spec-key">Ambiente de Execução</td>
+                            <td class="spec-val">Python {python_ver} • Flask (Porta 80)</td>
                         </tr>
                     </table>
                 </div>
 
                 <div class="card">
                     <div class="section-label">
-                        Engenharia Responsável
+                        Integrantes da Equipe
                         <span>{EQUIPE}</span>
                     </div>
                     <div class="member-list">
@@ -577,18 +573,18 @@ def home():
                 </div>
             </div>
 
-            <!-- Resposta da API Externa -->
+            <!-- Conselho DevOps do Dia -->
             <div class="api-box">
                 <div class="api-left">
-                    <span class="api-tag">GET https://api.adviceslip.com/advice • 200 OK</span>
+                    <span class="api-tag">Conselho DevOps do Dia • API Externa (api.adviceslip.com)</span>
                     <span class="api-quote">"{conselho}"</span>
                 </div>
             </div>
         </main>
 
         <footer class="footer">
-            <span>Host: {hostname} ({arquitetura})</span>
-            <span>Last probe: {horario_atual}</span>
+            <span>Servidor: vm-infra-monitor ({hostname} • {arquitetura})</span>
+            <span>Última leitura: {horario_atual}</span>
         </footer>
     </body>
     </html>
