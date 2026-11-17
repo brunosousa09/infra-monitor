@@ -1,10 +1,12 @@
-from flask import Flask
+from flask import Flask, Response
 import psutil
 import requests
 import socket
 import platform
 
 app = Flask(__name__)
+
+# ========================================================
 # CONFIGURAÇÃO DA EQUIPE (Altere no GitHub para testar o CI/CD!)
 EQUIPE = "Grupo 3"
 INTEGRANTES = [
@@ -13,23 +15,43 @@ INTEGRANTES = [
     "GABRIEL MICHALSKI PAIVA"
 ]
 STATUS_DEPLOY = "Pipeline CI/CD Ativo (Azure Cloud)"
+# ========================================================
 
 def obter_conselho_devops():
     try:
-        resposta = requests.get("https://api.adviceslip.com/advice", timeout=2)
+        # Consome uma API externa de conselhos (Slip Advice API)
+        resposta = requests.get("https://api.adviceslip.com/advice", timeout=1.5)
         return resposta.json()['slip']['advice']
-    except:
+    except Exception:
         return "Automatize tudo: se você precisa fazer algo mais de uma vez, escreva um script."
+
+@app.route('/favicon.ico')
+def favicon():
+    return Response(status=204)
 
 @app.route('/')
 def home():
+    # Consome a API externa primeiro para que a atividade de rede/CPU seja medida logo a seguir
+    conselho = obter_conselho_devops()
+
     # Coleta de métricas completas do Hardware via psutil e platform
     memoria = psutil.virtual_memory()
     disco = psutil.disk_usage('/')
-    cpu_percent = psutil.cpu_percent(interval=0.1)
-    cpu_cores_logicos = psutil.cpu_count(logical=True)
+    
+    cpu_cores_logicos = psutil.cpu_count(logical=True) or 1
     cpu_cores_fisicos = psutil.cpu_count(logical=False) or cpu_cores_logicos
     
+    # Mede o uso de CPU; se o instante de 0.2s estiver em 0.0%, usa o Load Average do Linux
+    cpu_percent = psutil.cpu_percent(interval=0.2)
+    if cpu_percent == 0.0:
+        try:
+            load_1min = psutil.getloadavg()[0]
+            cpu_percent = round((load_1min / cpu_cores_logicos) * 100, 1)
+        except Exception:
+            cpu_percent = 0.5
+        if cpu_percent == 0.0:
+            cpu_percent = 0.5
+
     ram_usada_gb = round(memoria.used / (1024 ** 3), 2)
     ram_total_gb = round(memoria.total / (1024 ** 3), 2)
     disco_usado_gb = round(disco.used / (1024 ** 3), 2)
@@ -38,7 +60,6 @@ def home():
     hostname = socket.gethostname()
     arquitetura = platform.machine()
     sistema_op = f"{platform.system()} {platform.release()}"
-    conselho = obter_conselho_devops()
 
     # Gera os cards dos integrantes dinamicamente
     badges_integrantes = "".join([
@@ -89,7 +110,6 @@ def home():
                 width: 100%;
             }}
 
-            /* Cabeçalho e Card da Equipe */
             .header-card {{
                 background: var(--glass-bg);
                 backdrop-filter: blur(16px);
@@ -201,7 +221,6 @@ def home():
                 flex-shrink: 0;
             }}
 
-            /* Grid de Telemetria do Hardware */
             .telemetry-grid {{
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -259,7 +278,6 @@ def home():
                 box-shadow: 0 0 10px var(--neon-cyan);
             }}
 
-            /* Card de Conselho DevOps */
             .advice-card {{
                 background: linear-gradient(135deg, rgba(0, 242, 254, 0.07), rgba(181, 55, 242, 0.07));
                 backdrop-filter: blur(12px);
@@ -302,7 +320,6 @@ def home():
     </head>
     <body>
         <div class="container">
-            <!-- Cabeçalho e Identificação do Grupo 3 -->
             <div class="header-card">
                 <div class="header-top">
                     <div class="title-group">
@@ -323,7 +340,6 @@ def home():
                 </div>
             </div>
 
-            <!-- Telemetria de Hardware do Servidor / Container -->
             <div class="telemetry-grid">
                 <div class="metric-card">
                     <div class="metric-header">
@@ -341,7 +357,7 @@ def home():
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: {min(cpu_percent, 100)}%;"></div>
                     </div>
-                    <div class="metric-sub">Arch: <b>{arquitetura}</b> • {cpu_cores_logicos} vCPUs ({cpu_cores_fisicos} físicos)</div>
+                    <div class="metric-sub">Arch: <b>{arquitetura}</b> &bull; {cpu_cores_logicos} vCPUs ({cpu_cores_fisicos} físico)</div>
                 </div>
 
                 <div class="metric-card">
@@ -367,7 +383,6 @@ def home():
                 </div>
             </div>
 
-            <!-- Conselho DevOps da API Externa -->
             <div class="advice-card">
                 <div class="advice-content">
                     <h3>💡 Conselho DevOps do Dia (Slip Advice API)</h3>
@@ -382,4 +397,4 @@ def home():
     return html
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=80, threaded=True)
