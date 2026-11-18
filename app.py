@@ -10,7 +10,7 @@ app = Flask(__name__)
 # ========================================================
 # CONFIGURAÇÃO DA EQUIPE (Altere no GitHub para testar o CI/CD!)
 EQUIPE = "Grupo 3"
-AMBIENTE = "Painel de Infraestrutura — Grupo 3 • Azure"
+AMBIENTE = "Painel de Infraestrutura — Grupo 3 • Azure!"
 INTEGRANTES = [
     "BRUNO ANTONIO DE SOUSA COSTA",
     "CAIO CESAR LIMA DINIZ",
