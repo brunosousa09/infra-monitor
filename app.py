@@ -127,7 +127,7 @@ def home():
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
         <style>
             :root {{
-                --bg-base: #0a0a0a;
+                --bg-base: #0f172a;
                 --bg-surface: #111111;
                 --bg-elevated: #161616;
                 --border: #262626;
