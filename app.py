@@ -127,7 +127,7 @@ def home():
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
         <style>
             :root {{
-                --bg-base: #0f172a;
+                --bg-base: #0a0a0a;
                 --bg-surface: #111111;
                 --bg-elevated: #161616;
                 --border: #262626;
@@ -135,7 +135,7 @@ def home():
                 --text-primary: #ededed;
                 --text-secondary: #a1a1aa;
                 --text-muted: #71717a;
-                --accent-green: #10b981;
+                --accent-green: #8b5cf6;
                 --accent-amber: #f59e0b;
                 --accent-red: #ef4444;
                 --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
