@@ -1,4 +1,4 @@
-from flask import Flask, Response
+from flask import Flask, Response, jsonify
 import psutil
 import requests
 import socket
@@ -7,8 +7,6 @@ from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
 
-# ========================================================
-# CONFIGURAÇÃO DA EQUIPE (Altere no GitHub para testar o CI/CD!)
 EQUIPE = "Grupo 3"
 AMBIENTE = "Painel de Infraestrutura — Grupo 3 • Azure!"
 INTEGRANTES = [
@@ -16,32 +14,22 @@ INTEGRANTES = [
     "CAIO CESAR LIMA DINIZ",
     "GABRIEL MICHALSKI PAIVA"
 ]
-# ========================================================
 
 def obter_conselho_devops():
     try:
-        # Consome a API externa de conselhos (Slip Advice API)
         resposta = requests.get("https://api.adviceslip.com/advice", timeout=1.5)
         return resposta.json()['slip']['advice']
     except Exception:
         return "Automatize tudo: se precisar fazer algo duas vezes, escreva um script."
 
-@app.route('/favicon.ico')
-def favicon():
-    return Response(status=204)
-
-@app.route('/')
-def home():
-    conselho = obter_conselho_devops()
-
-    # Coleta de métricas reais do servidor via psutil e platform
+def coletar_metricas():
     memoria = psutil.virtual_memory()
     disco = psutil.disk_usage('/')
-    
+
     cpu_cores_logicos = psutil.cpu_count(logical=True) or 1
     cpu_cores_fisicos = psutil.cpu_count(logical=False) or cpu_cores_logicos
-    
-    cpu_percent = psutil.cpu_percent(interval=0.2)
+
+    cpu_percent = psutil.cpu_percent(interval=0.15)
     try:
         load_1, load_5, load_15 = [round(x, 2) for x in psutil.getloadavg()]
         if cpu_percent == 0.0:
@@ -51,29 +39,54 @@ def home():
         if cpu_percent == 0.0:
             cpu_percent = 0.5
 
-    ram_usada_gb = round(memoria.used / (1024 ** 3), 2)
-    ram_total_gb = round(memoria.total / (1024 ** 3), 2)
-    ram_disp_gb = round(memoria.available / (1024 ** 3), 2)
-    
-    disco_usado_gb = round(disco.used / (1024 ** 3), 2)
-    disco_total_gb = round(disco.total / (1024 ** 3), 2)
-    disco_livre_gb = round(disco.free / (1024 ** 3), 2)
-
-    hostname = socket.gethostname()
-    arquitetura = platform.machine()
-    kernel = platform.release()
-    sistema_op_azure = f"Ubuntu 24.04.5 LTS (Kernel {kernel})"
-    python_ver = platform.python_version()
-
     boot_ts = psutil.boot_time()
     uptime_sec = int(datetime.now().timestamp() - boot_ts)
     uptime_horas = uptime_sec // 3600
     uptime_min = (uptime_sec % 3600) // 60
+    uptime_s = uptime_sec % 60
 
     fuso_br = timezone(timedelta(hours=-3))
     horario_atual = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M:%S (BRT / UTC-3)")
 
-    # Renderização limpa da equipe
+    return {
+        "hostname": socket.gethostname(),
+        "arquitetura": platform.machine(),
+        "kernel": platform.release(),
+        "sistema_op_azure": f"Ubuntu 24.04.5 LTS (Kernel {platform.release()})",
+        "python_ver": platform.python_version(),
+        "cpu_percent": round(cpu_percent, 1),
+        "cpu_cores_logicos": cpu_cores_logicos,
+        "cpu_cores_fisicos": cpu_cores_fisicos,
+        "load_avg": f"{load_1} / {load_5} / {load_15}",
+        "ram_percent": round(memoria.percent, 1),
+        "ram_usada_gb": round(memoria.used / (1024 ** 3), 2),
+        "ram_total_gb": round(memoria.total / (1024 ** 3), 2),
+        "ram_disp_gb": round(memoria.available / (1024 ** 3), 2),
+        "disco_percent": round(disco.percent, 1),
+        "disco_usado_gb": round(disco.used / (1024 ** 3), 2),
+        "disco_total_gb": round(disco.total / (1024 ** 3), 2),
+        "disco_livre_gb": round(disco.free / (1024 ** 3), 2),
+        "uptime": f"{uptime_horas}h {uptime_min}m {uptime_s}s",
+        "horario_atual": horario_atual
+    }
+
+@app.route('/favicon.ico')
+def favicon():
+    return Response(status=204)
+
+@app.route('/api/metrics')
+def api_metrics():
+    return jsonify(coletar_metricas())
+
+@app.route('/api/advice')
+def api_advice():
+    return jsonify({"advice": obter_conselho_devops()})
+
+@app.route('/')
+def home():
+    conselho = obter_conselho_devops()
+    m = coletar_metricas()
+
     linhas_equipe = "".join([
         f"""
         <div class="member-item">
@@ -103,6 +116,8 @@ def home():
                 --text-secondary: #a1a1aa;
                 --text-muted: #71717a;
                 --accent-green: #10b981;
+                --accent-amber: #f59e0b;
+                --accent-red: #ef4444;
                 --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
                 --font-mono: 'JetBrains Mono', monospace;
             }}
@@ -160,7 +175,7 @@ def home():
             .status-indicator {{
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 10px;
                 font-family: var(--font-mono);
                 font-size: 0.75rem;
                 color: var(--text-secondary);
@@ -170,11 +185,43 @@ def home():
                 border-radius: 6px;
             }}
 
+            .live-dot-wrapper {{
+                position: relative;
+                width: 8px;
+                height: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+
             .status-dot {{
                 width: 7px;
                 height: 7px;
                 background-color: var(--accent-green);
                 border-radius: 50%;
+                position: relative;
+                z-index: 2;
+            }}
+
+            .status-dot-ping {{
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                border-radius: 50%;
+                background-color: var(--accent-green);
+                opacity: 0.7;
+                animation: pulse-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+            }}
+
+            @keyframes pulse-ring {{
+                0% {{ transform: scale(1); opacity: 0.75; }}
+                75%, 100% {{ transform: scale(2.6); opacity: 0; }}
+            }}
+
+            .live-tag {{
+                color: var(--accent-green);
+                font-weight: 600;
+                letter-spacing: 0.04em;
             }}
 
             .main-container {{
@@ -220,13 +267,26 @@ def home():
                 font-weight: 500;
                 padding: 8px 14px;
                 border-radius: 6px;
-                text-decoration: none;
                 border: 1px solid transparent;
-                transition: opacity 0.15s ease;
+                cursor: pointer;
+                transition: opacity 0.15s ease, transform 0.1s ease;
             }}
 
             .btn-refresh:hover {{
                 opacity: 0.9;
+            }}
+
+            .btn-refresh:active {{
+                transform: scale(0.98);
+            }}
+
+            .spin {{
+                animation: spin-icon 0.6s linear infinite;
+            }}
+
+            @keyframes spin-icon {{
+                from {{ transform: rotate(0deg); }}
+                to {{ transform: rotate(360deg); }}
             }}
 
             .metrics-grid {{
@@ -241,6 +301,11 @@ def home():
                 border: 1px solid var(--border);
                 border-radius: 8px;
                 padding: 20px;
+                transition: border-color 0.25s ease;
+            }}
+
+            .card:hover {{
+                border-color: #363636;
             }}
 
             .card-header {{
@@ -264,13 +329,41 @@ def home():
                 height: 16px;
             }}
 
+            .metric-row {{
+                display: flex;
+                align-items: flex-end;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 12px;
+            }}
+
             .metric-primary {{
                 font-family: var(--font-mono);
                 font-size: 1.75rem;
                 font-weight: 600;
                 color: var(--text-primary);
                 letter-spacing: -0.03em;
-                margin-bottom: 12px;
+                font-variant-numeric: tabular-nums;
+                transition: color 0.35s ease;
+            }}
+
+            .value-updated {{
+                color: var(--accent-green) !important;
+            }}
+
+            .sparkline {{
+                width: 72px;
+                height: 26px;
+                overflow: visible;
+            }}
+
+            .sparkline polyline {{
+                fill: none;
+                stroke: var(--text-secondary);
+                stroke-width: 1.75;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                transition: all 0.4s ease;
             }}
 
             .meter {{
@@ -286,6 +379,7 @@ def home():
                 height: 100%;
                 background-color: var(--text-primary);
                 border-radius: 2px;
+                transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.4s ease;
             }}
 
             .metric-footer {{
@@ -294,6 +388,7 @@ def home():
                 font-family: var(--font-mono);
                 font-size: 0.75rem;
                 color: var(--text-muted);
+                font-variant-numeric: tabular-nums;
             }}
 
             .bottom-grid {{
@@ -352,6 +447,8 @@ def home():
                 font-family: var(--font-mono);
                 color: var(--text-primary);
                 text-align: right;
+                font-variant-numeric: tabular-nums;
+                transition: color 0.35s ease;
             }}
 
             .member-list {{
@@ -415,6 +512,7 @@ def home():
                 font-family: var(--font-mono);
                 font-size: 0.875rem;
                 color: var(--text-primary);
+                transition: opacity 0.25s ease;
             }}
 
             .footer {{
@@ -441,7 +539,12 @@ def home():
                 <span class="brand-badge">{EQUIPE}</span>
             </div>
             <div class="status-indicator">
-                <span class="status-dot"></span>
+                <span class="live-dot-wrapper">
+                    <span class="status-dot-ping"></span>
+                    <span class="status-dot"></span>
+                </span>
+                <span class="live-tag">AO VIVO</span>
+                <span class="divider">|</span>
                 <span>{AMBIENTE}</span>
             </div>
         </header>
@@ -451,17 +554,17 @@ def home():
             <div class="page-header">
                 <div class="page-title">
                     <h1>Telemetria do Servidor & Status do Container</h1>
-                    <p>Monitoramento de hardware em tempo real e deploy automatizado (CI/CD) via GitHub Actions</p>
+                    <p>Monitoramento automático em tempo real (polling 1.5s) e deploy CI/CD via GitHub Actions</p>
                 </div>
-                <a href="/" class="btn-refresh">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <button id="btn-sync" class="btn-refresh" onclick="sincronizarManual()">
+                    <svg id="icon-sync" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
                         <path d="M3 3v5h5"/>
                         <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
                         <path d="M16 21h5v-5"/>
                     </svg>
-                    Atualizar Telemetria
-                </a>
+                    Sincronizar & Novo Conselho
+                </button>
             </div>
 
             <!-- Cards de Métricas Principais -->
@@ -472,13 +575,15 @@ def home():
                         <span class="card-title">Hostname (ID do Container)</span>
                         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
                     </div>
-                    <div class="metric-primary" style="font-size: 1.45rem;">{hostname}</div>
+                    <div class="metric-row">
+                        <div id="val-hostname" class="metric-primary" style="font-size: 1.45rem;">{m['hostname']}</div>
+                    </div>
                     <div class="meter">
                         <div class="meter-fill" style="width: 100%; background-color: var(--accent-green);"></div>
                     </div>
                     <div class="metric-footer">
                         <span>Status: Ativo</span>
-                        <span>Atividade: {uptime_horas}h {uptime_min}m</span>
+                        <span id="val-uptime">Atividade: {m['uptime']}</span>
                     </div>
                 </div>
 
@@ -488,13 +593,18 @@ def home():
                         <span class="card-title">Uso de CPU</span>
                         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
                     </div>
-                    <div class="metric-primary">{cpu_percent}%</div>
+                    <div class="metric-row">
+                        <div id="val-cpu" class="metric-primary">{m['cpu_percent']}%</div>
+                        <svg class="sparkline" viewBox="0 0 72 26">
+                            <polyline id="spark-cpu" points="0,24 72,24" />
+                        </svg>
+                    </div>
                     <div class="meter">
-                        <div class="meter-fill" style="width: {min(cpu_percent, 100)}%;"></div>
+                        <div id="bar-cpu" class="meter-fill" style="width: {min(m['cpu_percent'], 100)}%;"></div>
                     </div>
                     <div class="metric-footer">
-                        <span>Arq: {arquitetura}</span>
-                        <span>{cpu_cores_logicos} vCPUs ({cpu_cores_fisicos} Núcleo)</span>
+                        <span>Arq: {m['arquitetura']}</span>
+                        <span>{m['cpu_cores_logicos']} vCPUs ({m['cpu_cores_fisicos']} Núcleo)</span>
                     </div>
                 </div>
 
@@ -504,13 +614,18 @@ def home():
                         <span class="card-title">Uso de Memória (RAM)</span>
                         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><path d="M8 11V9"/><path d="M16 11V9"/><path d="M12 11V9"/><path d="M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/></svg>
                     </div>
-                    <div class="metric-primary">{memoria.percent}%</div>
+                    <div class="metric-row">
+                        <div id="val-ram" class="metric-primary">{m['ram_percent']}%</div>
+                        <svg class="sparkline" viewBox="0 0 72 26">
+                            <polyline id="spark-ram" points="0,24 72,24" />
+                        </svg>
+                    </div>
                     <div class="meter">
-                        <div class="meter-fill" style="width: {min(memoria.percent, 100)}%;"></div>
+                        <div id="bar-ram" class="meter-fill" style="width: {min(m['ram_percent'], 100)}%;"></div>
                     </div>
                     <div class="metric-footer">
-                        <span>Usado: {ram_usada_gb} GB</span>
-                        <span>Total: {ram_total_gb} GB</span>
+                        <span id="val-ram-used">Usado: {m['ram_usada_gb']} GB</span>
+                        <span>Total: {m['ram_total_gb']} GB</span>
                     </div>
                 </div>
 
@@ -520,13 +635,15 @@ def home():
                         <span class="card-title">Armazenamento em Disco (/)</span>
                         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
                     </div>
-                    <div class="metric-primary">{disco.percent}%</div>
+                    <div class="metric-row">
+                        <div id="val-disco" class="metric-primary">{m['disco_percent']}%</div>
+                    </div>
                     <div class="meter">
-                        <div class="meter-fill" style="width: {min(disco.percent, 100)}%;"></div>
+                        <div id="bar-disco" class="meter-fill" style="width: {min(m['disco_percent'], 100)}%;"></div>
                     </div>
                     <div class="metric-footer">
-                        <span>Usado: {disco_usado_gb} GB</span>
-                        <span>Livre: {disco_livre_gb} GB</span>
+                        <span id="val-disco-used">Usado: {m['disco_usado_gb']} GB</span>
+                        <span id="val-disco-free">Livre: {m['disco_livre_gb']} GB</span>
                     </div>
                 </div>
             </div>
@@ -541,23 +658,23 @@ def home():
                     <table class="spec-table">
                         <tr>
                             <td class="spec-key">Sistema Operacional</td>
-                            <td class="spec-val">{sistema_op_azure}</td>
+                            <td class="spec-val">{m['sistema_op_azure']}</td>
                         </tr>
                         <tr>
                             <td class="spec-key">Arquitetura do Processador</td>
-                            <td class="spec-val">{arquitetura} ({cpu_cores_logicos} vCPUs)</td>
+                            <td class="spec-val">{m['arquitetura']} ({m['cpu_cores_logicos']} vCPUs)</td>
                         </tr>
                         <tr>
                             <td class="spec-key">Carga Média do Sistema (1m / 5m / 15m)</td>
-                            <td class="spec-val">{load_1} / {load_5} / {load_15}</td>
+                            <td id="val-load" class="spec-val">{m['load_avg']}</td>
                         </tr>
                         <tr>
                             <td class="spec-key">Memória Disponível</td>
-                            <td class="spec-val">{ram_disp_gb} GB de {ram_total_gb} GB</td>
+                            <td id="val-ram-disp" class="spec-val">{m['ram_disp_gb']} GB de {m['ram_total_gb']} GB</td>
                         </tr>
                         <tr>
                             <td class="spec-key">Ambiente de Execução</td>
-                            <td class="spec-val">Python {python_ver} • Flask (Porta 80)</td>
+                            <td class="spec-val">Python {m['python_ver']} • Flask (Porta 80)</td>
                         </tr>
                     </table>
                 </div>
@@ -577,15 +694,114 @@ def home():
             <div class="api-box">
                 <div class="api-left">
                     <span class="api-tag">Conselho DevOps do Dia • API Externa (api.adviceslip.com)</span>
-                    <span class="api-quote">"{conselho}"</span>
+                    <span id="val-advice" class="api-quote">"{conselho}"</span>
                 </div>
             </div>
         </main>
 
         <footer class="footer">
-            <span>Servidor: vm-infra-monitor ({hostname} • {arquitetura})</span>
-            <span>Última leitura: {horario_atual}</span>
+            <span>Servidor: vm-infra-monitor ({m['hostname']} • {m['arquitetura']})</span>
+            <span id="val-horario">Última leitura: {m['horario_atual']}</span>
         </footer>
+
+        <script>
+            const cpuHistory = [{m['cpu_percent']}];
+            const ramHistory = [{m['ram_percent']}];
+            const MAX_POINTS = 20;
+
+            function corPorNivel(valor) {{
+                if (valor >= 85) return 'var(--accent-red)';
+                if (valor >= 70) return 'var(--accent-amber)';
+                return 'var(--text-primary)';
+            }}
+
+            function atualizarTextoComAnimacao(id, novoTexto) {{
+                const el = document.getElementById(id);
+                if (!el || el.textContent === novoTexto) return;
+                el.textContent = novoTexto;
+                el.classList.add('value-updated');
+                setTimeout(() => el.classList.remove('value-updated'), 450);
+            }}
+
+            function atualizarSparkline(id, historico) {{
+                const poly = document.getElementById(id);
+                if (!poly || historico.length < 2) return;
+                const largura = 72;
+                const altura = 24;
+                const passo = largura / (MAX_POINTS - 1);
+                const pontos = historico.map((val, i) => {{
+                    const x = (i * passo).toFixed(1);
+                    const y = (altura - (Math.min(val, 100) / 100) * (altura - 2)).toFixed(1);
+                    return `${{x}},${{y}}`;
+                }}).join(' ');
+                poly.setAttribute('points', pontos);
+            }}
+
+            async function buscarMetricas() {{
+                try {{
+                    const res = await fetch('/api/metrics', {{ cache: 'no-store' }});
+                    if (!res.ok) return;
+                    const data = await res.json();
+
+                    atualizarTextoComAnimacao('val-cpu', `${{data.cpu_percent}}%`);
+                    atualizarTextoComAnimacao('val-ram', `${{data.ram_percent}}%`);
+                    atualizarTextoComAnimacao('val-disco', `${{data.disco_percent}}%`);
+                    atualizarTextoComAnimacao('val-load', data.load_avg);
+                    atualizarTextoComAnimacao('val-ram-disp', `${{data.ram_disp_gb}} GB de ${{data.ram_total_gb}} GB`);
+
+                    document.getElementById('val-uptime').textContent = `Atividade: ${{data.uptime}}`;
+                    document.getElementById('val-ram-used').textContent = `Usado: ${{data.ram_usada_gb}} GB`;
+                    document.getElementById('val-disco-used').textContent = `Usado: ${{data.disco_usado_gb}} GB`;
+                    document.getElementById('val-disco-free').textContent = `Livre: ${{data.disco_livre_gb}} GB`;
+                    document.getElementById('val-horario').textContent = `Última leitura: ${{data.horario_atual}}`;
+
+                    const barCpu = document.getElementById('bar-cpu');
+                    barCpu.style.width = `${{Math.min(data.cpu_percent, 100)}}%`;
+                    barCpu.style.backgroundColor = corPorNivel(data.cpu_percent);
+
+                    const barRam = document.getElementById('bar-ram');
+                    barRam.style.width = `${{Math.min(data.ram_percent, 100)}}%`;
+                    barRam.style.backgroundColor = corPorNivel(data.ram_percent);
+
+                    const barDisco = document.getElementById('bar-disco');
+                    barDisco.style.width = `${{Math.min(data.disco_percent, 100)}}%`;
+                    barDisco.style.backgroundColor = corPorNivel(data.disco_percent);
+
+                    cpuHistory.push(data.cpu_percent);
+                    if (cpuHistory.length > MAX_POINTS) cpuHistory.shift();
+                    atualizarSparkline('spark-cpu', cpuHistory);
+
+                    ramHistory.push(data.ram_percent);
+                    if (ramHistory.length > MAX_POINTS) ramHistory.shift();
+                    atualizarSparkline('spark-ram', ramHistory);
+                }} catch (err) {{
+                    console.error('Erro ao coletar métricas:', err);
+                }}
+            }}
+
+            async function sincronizarManual() {{
+                const icon = document.getElementById('icon-sync');
+                const quoteEl = document.getElementById('val-advice');
+                icon.classList.add('spin');
+                quoteEl.style.opacity = '0.4';
+
+                await buscarMetricas();
+                try {{
+                    const res = await fetch('/api/advice', {{ cache: 'no-store' }});
+                    if (res.ok) {{
+                        const data = await res.json();
+                        quoteEl.textContent = `"${{data.advice}}"`;
+                    }}
+                }} catch (err) {{
+                    console.error('Erro ao atualizar conselho:', err);
+                }}
+
+                quoteEl.style.opacity = '1';
+                setTimeout(() => icon.classList.remove('spin'), 400);
+            }}
+
+            setInterval(buscarMetricas, 1500);
+        </script>
     </body>
     </html>
     """
