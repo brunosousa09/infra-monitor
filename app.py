@@ -17,8 +17,12 @@ INTEGRANTES = [
 
 def obter_conselho_devops():
     try:
+        # 1. Busca o conselho original em inglês
         resposta = requests.get("https://api.adviceslip.com/advice", timeout=1.5)
         conselho_en = resposta.json()['slip']['advice']
+
+        # 2. Traduz automaticamente para Português (Brasil)
+        conselho_pt = conselho_en
         try:
             traducao = requests.get(
                 "https://api.mymemory.translated.net/get",
@@ -27,12 +31,16 @@ def obter_conselho_devops():
             )
             texto_pt = traducao.json()['responseData']['translatedText']
             if texto_pt:
-                return texto_pt
+                conselho_pt = texto_pt
         except Exception:
-            pass 
-        return conselho_en
+            pass
+
+        return {"pt": conselho_pt, "en": conselho_en}
     except Exception:
-        return "Automatize tudo: se precisar fazer algo duas vezes, escreva um script."
+        return {
+            "pt": "Automatize tudo: se precisar fazer algo duas vezes, escreva um script.",
+            "en": "Automate everything: if you have to do it twice, write a script."
+        }
 
 def coletar_metricas():
     memoria = psutil.virtual_memory()
@@ -92,7 +100,7 @@ def api_metrics():
 
 @app.route('/api/advice')
 def api_advice():
-    return jsonify({"advice": obter_conselho_devops()})
+    return jsonify(obter_conselho_devops())
 
 @app.route('/')
 def home():
@@ -509,7 +517,7 @@ def home():
             .api-left {{
                 display: flex;
                 flex-direction: column;
-                gap: 4px;
+                gap: 6px;
             }}
 
             .api-tag {{
@@ -524,6 +532,14 @@ def home():
                 font-family: var(--font-mono);
                 font-size: 0.875rem;
                 color: var(--text-primary);
+                transition: opacity 0.25s ease;
+            }}
+
+            .api-quote-en {{
+                font-family: var(--font-mono);
+                font-size: 0.78rem;
+                color: var(--text-muted);
+                font-style: italic;
                 transition: opacity 0.25s ease;
             }}
 
@@ -706,7 +722,8 @@ def home():
             <div class="api-box">
                 <div class="api-left">
                     <span class="api-tag">Conselho DevOps do Dia • API Externa (api.adviceslip.com)</span>
-                    <span id="val-advice" class="api-quote">"{conselho}"</span>
+                    <span id="val-advice-pt" class="api-quote">"{conselho['pt']}"</span>
+                    <span id="val-advice-en" class="api-quote-en">Original (EN): "{conselho['en']}"</span>
                 </div>
             </div>
         </main>
@@ -793,25 +810,28 @@ def home():
 
             async function sincronizarManual() {{
                 const icon = document.getElementById('icon-sync');
-                const quoteEl = document.getElementById('val-advice');
+                const quotePt = document.getElementById('val-advice-pt');
+                const quoteEn = document.getElementById('val-advice-en');
                 icon.classList.add('spin');
-                quoteEl.style.opacity = '0.4';
+                quotePt.style.opacity = '0.4';
+                quoteEn.style.opacity = '0.4';
 
                 await buscarMetricas();
                 try {{
                     const res = await fetch('/api/advice', {{ cache: 'no-store' }});
                     if (res.ok) {{
                         const data = await res.json();
-                        quoteEl.textContent = `"${{data.advice}}"`;
+                        quotePt.textContent = `"${{data.pt}}"`;
+                        quoteEn.textContent = `Original (EN): "${{data.en}}"`;
                     }}
                 }} catch (err) {{
                     console.error('Erro ao atualizar conselho:', err);
                 }}
 
-                quoteEl.style.opacity = '1';
+                quotePt.style.opacity = '1';
+                quoteEn.style.opacity = '1';
                 setTimeout(() => icon.classList.remove('spin'), 400);
             }}
-
             setInterval(buscarMetricas, 1500);
         </script>
     </body>
