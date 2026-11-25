@@ -18,7 +18,19 @@ INTEGRANTES = [
 def obter_conselho_devops():
     try:
         resposta = requests.get("https://api.adviceslip.com/advice", timeout=1.5)
-        return resposta.json()['slip']['advice']
+        conselho_en = resposta.json()['slip']['advice']
+        try:
+            traducao = requests.get(
+                "https://api.mymemory.translated.net/get",
+                params={"q": conselho_en, "langpair": "en|pt-BR"},
+                timeout=2.0
+            )
+            texto_pt = traducao.json()['responseData']['translatedText']
+            if texto_pt:
+                return texto_pt
+        except Exception:
+            pass 
+        return conselho_en
     except Exception:
         return "Automatize tudo: se precisar fazer algo duas vezes, escreva um script."
 
